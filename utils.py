@@ -4,11 +4,14 @@ from PIL import Image
 from torchvision import transforms
 
 
-def load_image(image_fp):
+def load_image(image_fp, shape=None):
     image = Image.open(image_fp)
 
     while image.width > 512 or image.height > 512:
         image = image.resize((image.width // 2, image.height // 2))
+
+    if shape:
+        image = image.resize(shape, Image.LANCZOS)
 
     return image
 

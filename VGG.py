@@ -9,13 +9,23 @@ class VGG(Module):
 
         self.vgg = models.vgg19(pretrained=True).features
 
-    def forward(self, x):
-        features = []
+        for parameter in self.vgg.parameters():
+            parameter.requires_grad_(False)
 
-        for i, layer in enumerate(self.vgg):
+    def forward(self, x):
+        select = {'0':  'conv1_1',
+                  '5':  'conv2_1',
+                  '10': 'conv3_1',
+                  '19': 'conv4_1',
+                  '28': 'conv5_1',
+                  '21': 'conv4_2'}
+
+        features = {}
+
+        for name, layer in self.vgg._modules.items():
             x = layer(x)
 
-            if i in [0, 5, 10, 19, 28]:
-                features.append(x.squeeze().flatten(start_dim=1))
+            if name in select:
+                features[select[name]] = x
 
         return features
