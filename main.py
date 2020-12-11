@@ -1,74 +1,57 @@
-from __future__ import division
-
 import torch
 
 from utils import *
-from VGG import VGG
+from VGG import VGG, content_loss, style_loss
 
-
-def squared_error_loss(x, y):
-    b, c, h, w = x.size()
-    F_x = x.view(b * c, h * w)
-    F_a = y.view(b * c, h * w)
-
-    F_a = torch.mm(F_a, F_a.t())
-    F_x = torch.mm(F_x, F_x.t())
-    return torch.mean((F_x - F_a) ** 2) / (4 * c * h * w)
-
-
-p = load_image("png/content.jpg")
-a = load_image("png/style.jpg", p.size)
-x = load_image("png/content.jpg")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-p = PIL_to_tensor(p).to(device)
-a = PIL_to_tensor(a).to(device)
-x = PIL_to_tensor(x).to(device).requires_grad_(True)
+img_c = load_image("input/content.jpg")
+img_s = load_image("input/style.jpg")
+img_t = load_image("input/content.jpg")
 
-vgg = VGG().to(device).eval()
+img_c = PIL_to_tensor(img_c).to(device)
+img_s = PIL_to_tensor(img_s).to(device)
+img_t = PIL_to_tensor(img_t).to(device).requires_grad_(True)
 
-optimizer = torch.optim.Adam([x], lr=0.25)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.9)
+vgg = VGG().to(device).requires_grad_(False).eval()
 
-total_step = 1001
+optimizer = torch.optim.Adam([img_t], lr=0.1)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.9)
 
-style_weights = {'conv1_1': 0.1,
-                 'conv2_1': 0.2,
-                 'conv3_1': 0.4,
-                 'conv4_1': 0.8,
-                 'conv5_1': 1.6}
+style_layer_weights = {'conv1_1': 0.2,
+                       'conv2_1': 0.2,
+                       'conv3_1': 0.2,
+                       'conv4_1': 0.2,
+                       'conv5_1': 0.2}
 
-content_weight = 1
-style_weight = 1
+content_weight = 0.01
+style_weight = 99.99
 
-for step in range(total_step):
-    layers_p = vgg(p)
-    layers_a = vgg(a)
-    layers_x = vgg(x)
+steps = 3000
 
-    content_loss = torch.mean((layers_x['conv4_2'] - layers_p['conv4_2']) ** 2)
+for step in range(steps):
+    features_c = vgg(img_c)
+    features_s = vgg(img_s)
+    features_t = vgg(img_t)
 
-    style_loss = 0
-    for l in style_weights:
-        style_layer_loss = style_weights[l] * squared_error_loss(layers_x[l], layers_a[l])
+    content_loss_ = content_loss(features_t, features_c)
 
-        style_loss += style_layer_loss
+    style_loss_ = style_loss(features_t, features_s, style_layer_weights)
 
-    total_loss = content_weight * content_loss + style_weight * style_loss
+    total_loss = content_weight * content_loss_ + style_weight * style_loss_
+
+    if step % 100 == 0:
+        print('Step {}/{}, Total loss:{:.4f}, Content Loss: {:.4f}, Style Loss: {:.4f}'.
+              format(step, steps, total_loss, content_weight * content_loss_, style_weight * style_loss_))
 
     optimizer.zero_grad()
     total_loss.backward()
     optimizer.step()
     scheduler.step()
 
-    if step % 100 == 0:
-        print('Step {}/{}, Total loss:{:.4f}, Content Loss: {:.4f}, Style Loss: {:.4f}'.
-              format(step, total_step, total_loss.item(), content_weight * content_loss, style_weight * style_loss))
+img_t = tensor_to_PIL(img_t)
 
+show_image(img_t)
 
-x = tensor_to_PIL(x)
-
-show_image(x)
-
-save_image(x, 'target.png')
+save_image(img_t, 'output/target.png')
